@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Distance Matrix service</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        height: 100%;
+        width: 25%;
+      }
+#panel {
+  position: absolute;
+  top: 10px;
+  left: 25%;
+  z-index: 5;
+  background-color: #fff;
+  padding: 5px;
+  border: 1px solid #999;
+  text-align: center;
+}
+
+/**
+ * Provide the following styles for both ID and class, where ID represents an
+ * actual existing "panel" with JS bound to its name, and the class is just
+ * non-map content that may already have a different ID with JS bound to its
+ * name.
+ */
+
+#panel, .panel {
+  font-family: 'Roboto','sans-serif';
+  line-height: 30px;
+  padding-left: 10px;
+}
+
+#panel select, #panel input, .panel select, .panel input {
+  font-size: 15px;
+}
+
+#panel select, .panel select {
+  width: 100%;
+}
+
+#panel i, .panel i {
+  font-size: 12px;
+}
+
+    </style>
+    <style>
+      #content-pane {
+        float: right;
+        width: 74%;
+        padding-left: 2%;
+      }
+      #outputDiv {
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+
+    <div id="content-pane" class="panel">
+      <div id="inputs">
+        <input type="file" id="file-input" value="">
+      </div>
+      <div>
+        <strong>Results</strong>
+      </div>
+
+      <div id="outputDiv">
+        <table id="tripTable" class="table"></table>
+      </div>
+    </div>
+    <div id="map"></div>
+    <script>
+function initMap(parameters) {
+
+  var stops = parameters || [
+    'Christchurch, New Zealand',
+    'Picton, New Zealand',
+    'Wellington, New Zealand',
+    'Tararua Forest Park'
+  ]
+
+  // var origin1 = 'Christchurch, New Zealand';
+  // var origin2 = 'Picton, New Zealand';
+  // var destinationA = 'Picton, New Zealand';
+  // var destinationB = 'Wellington, New Zealand';
+
+  var bounds = new google.maps.LatLngBounds;
+  var markersArray = [];
+
+  var destinationIcon = 'https://chart.googleapis.com/chart?' +
+      'chst=d_map_pin_letter&chld=D|FF0000|000000';
+  var originIcon = 'https://chart.googleapis.com/chart?' +
+      'chst=d_map_pin_letter&chld=O|FFFF00|000000';
+
+  var map = new google.maps.Map(document.getElementById('map'), {
+    center: {lat: 55.53, lng: 9.4},
+    zoom: 10
+  });
+  var geocoder = new google.maps.Geocoder;
+
+  var service = new google.maps.DistanceMatrixService;
+
+  var outputDiv = document.getElementById('tripTable');
+  outputDiv.innerHTML = '';
+
+  // var xmlhttp=new XMLHttpRequest();
+  // xmlhttp.open("GET","trip.kml");
+  // xmlhttp.send();
+  // var xmlDoc=xmlhttp.responseXML;
+
+  // var xml = new KmlMapParser({
+  //   map: map,
+  //   kml: 'trip.kml',
+  // });
+
+  // calcDistance(origin1, destinationA);
+  // calcDistance(origin2, destinationB);
+  var origin = stops[0];
+  var destination;
+  for(var i=1; i<stops.length; i++){
+    destination = stops[i];
+
+    calcDistance(origin, destination);
+
+    origin = destination;
+  }
+
+  outputDiv.innerHTML += '</table>'
+
+  function calcDistance(origin1, destinationA) {
+
+    service.getDistanceMatrix({
+      origins: [origin1],
+      destinations: [destinationA],
+      travelMode: google.maps.TravelMode.DRIVING,
+      unitSystem: google.maps.UnitSystem.METRIC,
+      avoidHighways: false,
+      avoidTolls: false
+    }, function(response, status) {
+      if (status !== google.maps.DistanceMatrixStatus.OK) {
+        console.warn('Error was: ' + status);
+      } else {
+        var originList = response.originAddresses;
+        var destinationList = response.destinationAddresses;
+        //outputDiv.innerHTML = '';
+        //deleteMarkers(markersArray);
+
+        var showGeocodedAddressOnMap = function(asDestination) {
+          var icon = asDestination ? destinationIcon : originIcon;
+          return function(results, status) {
+            if (status === google.maps.GeocoderStatus.OK) {
+              map.fitBounds(bounds.extend(results[0].geometry.location));
+              markersArray.push(new google.maps.Marker({
+                map: map,
+                position: results[0].geometry.location,
+                icon: icon
+              }));
+            } else {
+              console.warn('Geocode was not successful due to: ' + status);
+            }
+          };
+        };
+
+        for (var i = 0; i < originList.length; i++) {
+          var results = response.rows[i].elements;
+          geocoder.geocode({'address': originList[i]},
+              showGeocodedAddressOnMap(false));
+          for (var j = 0; j < results.length; j++) {
+            geocoder.geocode({'address': destinationList[j]},
+                showGeocodedAddressOnMap(true));
+            outputDiv.innerHTML +=
+              '<tr><td>' + originList[i] + ' </td><td> ' + destinationList[j] +
+                '</td><td> ' + results[j].distance.text + ' </td><td> ' +
+                results[j].duration.text + '</td></tr>';
+          }
+        }
+      }
+    });
+  }
+
+}
+
+function deleteMarkers(markersArray) {
+  for (var i = 0; i < markersArray.length; i++) {
+    markersArray[i].setMap(null);
+  }
+  markersArray = [];
+}
+
+function readSingleFile(e) {
+  var file = e.target.files[0];
+  if (!file) {
+   return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var contents = e.target.result;
+    processContents(contents);
+  };
+  reader.readAsText(file);
+}
+
+function processContents(contents) {
+  // body...
+  var xmlDoc = new DOMParser().parseFromString(contents,'text/xml');
+  var placemarks = xmlDoc.getElementsByTagName('Placemark');
+
+  var stops = [];
+  for (var i = 0; i < placemarks.length; i++) {
+    var p = placemarks[i];
+
+    var hasPoint = p.getElementsByTagName('Point').length >0;
+    var name = p.querySelector('name').textContent;
+
+
+    console.log(name);
+
+    if(hasPoint){
+      var coord = p.querySelector('Point > coordinates');
+      var splits = coord.textContent.split(',');
+
+      var obj = {lat: splits[0], lng: splits[1]};
+
+      console.log(obj)
+
+      stops.push(name);
+
+    }
+
+  }
+
+  initMap(stops);
+
+}
+
+document.getElementById('file-input').addEventListener('change', readSingleFile, false);
+
+    </script>
+    <!-- <script src="KmlMapParser.js"/> -->
+    <script src="https://maps.googleapis.com/maps/api/js?signed_in=true&callback=initMap"
+        async defer></script>
+  </body>
+</html>
